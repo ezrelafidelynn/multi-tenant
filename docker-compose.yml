@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: docusphere-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-docusphere}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docusphere}
+      POSTGRES_DB: ${POSTGRES_DB:-docusphere}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - docusphere_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-docusphere} -d ${POSTGRES_DB:-docusphere}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: docusphere-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - docusphere_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: docusphere-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - docusphere_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Creates the bucket on first boot, then exits.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY_ID:-minioadmin} ${S3_SECRET_ACCESS_KEY:-minioadmin} &&
+      mc mb --ignore-existing local/${S3_BUCKET:-docusphere-documents} &&
+      echo 'bucket ready';
+      "
+
+  # ---- Application (opt-in): `docker compose --profile app up --build` ----
+  api:
+    build: ./server
+    profiles: ["app"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      DATABASE_URL: postgresql://${POSTGRES_USER:-docusphere}:${POSTGRES_PASSWORD:-docusphere}@postgres:5432/${POSTGRES_DB:-docusphere}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+    command: ["node", "dist/index.js"]
+    ports:
+      - "${PORT:-4000}:4000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+
+  worker:
+    build: ./server
+    profiles: ["app"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-docusphere}:${POSTGRES_PASSWORD:-docusphere}@postgres:5432/${POSTGRES_DB:-docusphere}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+    command: ["node", "dist/ingestion/worker.js"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+
+volumes:
+  docusphere_pg:
+  docusphere_redis:
+  docusphere_minio:

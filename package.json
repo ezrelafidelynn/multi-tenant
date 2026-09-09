@@ -1,0 +1,14 @@
+{
+  "name": "docusphere",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant enterprise document search & chat with hybrid retrieval",
+  "workspaces": ["server", "web"],
+  "scripts": {
+    "dev:server": "npm --workspace server run dev",
+    "dev:worker": "npm --workspace server run worker",
+    "dev:web": "npm --workspace web run dev",
+    "migrate": "npm --workspace server run migrate",
+    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck"
+  }
+}
