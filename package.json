@@ -4,6 +4,10 @@
   "private": true,
   "description": "Multi-tenant enterprise document search & chat with hybrid retrieval",
   "workspaces": ["server", "web"],
+  "overrides": {
+    "qs": "^6.16.0",
+    "postcss": "^8.5.28"
+  },
   "scripts": {
     "dev:server": "npm --workspace server run dev",
     "dev:worker": "npm --workspace server run worker",

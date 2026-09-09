@@ -66,14 +66,16 @@ services:
 
   # ---- Application (opt-in): `docker compose --profile app up --build` ----
   api:
-    build: ./server
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     profiles: ["app"]
     env_file: .env
     environment:
-      POSTGRES_HOST: postgres
       DATABASE_URL: postgresql://${POSTGRES_USER:-docusphere}:${POSTGRES_PASSWORD:-docusphere}@postgres:5432/${POSTGRES_DB:-docusphere}
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     command: ["node", "dist/index.js"]
     ports:
       - "${PORT:-4000}:4000"
@@ -83,7 +85,9 @@ services:
       minio: { condition: service_healthy }
 
   worker:
-    build: ./server
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     profiles: ["app"]
     env_file: .env
     environment:
@@ -95,6 +99,21 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:4000}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    profiles: ["app"]
+    environment:
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
 
 volumes:
   docusphere_pg:

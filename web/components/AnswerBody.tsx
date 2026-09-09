@@ -3,13 +3,14 @@
 import { Fragment, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import rehypeHighlight from 'rehype-highlight';
+import 'highlight.js/styles/github-dark.css';
 import type { Source } from '@/lib/api';
 
 /**
- * Renders the assistant message as Markdown, then turns inline `[n]` citation
- * markers into buttons that open the preview drawer.
+ * Renders the assistant message as Markdown (with syntax-highlighted code via
+ * rehype-highlight / highlight.js), then turns inline `[n]` citation markers
+ * into buttons that open the preview drawer.
  */
 export function AnswerBody({
   content,
@@ -24,15 +25,14 @@ export function AnswerBody({
 
   const linkifyCitations = (children: ReactNode): ReactNode => {
     if (typeof children === 'string') {
-      const parts = children.split(/(\[\d+\])/g);
-      return parts.map((part, i) => {
+      return children.split(/(\[\d+\])/g).map((part, i) => {
         const m = /^\[(\d+)\]$/.exec(part);
-        if (!m) return <Fragment key={i}>{part}</Fragment>;
-        const src = byMarker.get(Number(m[1]));
-        if (!src) return <Fragment key={i}>{part}</Fragment>;
+        const src = m ? byMarker.get(Number(m[1])) : undefined;
+        if (!m || !src) return <Fragment key={i}>{part}</Fragment>;
         return (
           <button
             key={i}
+            type="button"
             onClick={() => onCite(src)}
             className="mx-0.5 inline-flex items-center rounded bg-brand/10 px-1 text-xs font-medium text-brand hover:bg-brand/20"
             title={`${src.documentTitle}${src.page != null ? ` · p.${src.page}` : ''}`}
@@ -42,7 +42,9 @@ export function AnswerBody({
         );
       });
     }
-    if (Array.isArray(children)) return children.map((c, i) => <Fragment key={i}>{linkifyCitations(c)}</Fragment>);
+    if (Array.isArray(children)) {
+      return children.map((c, i) => <Fragment key={i}>{linkifyCitations(c)}</Fragment>);
+    }
     return children;
   };
 
@@ -50,22 +52,15 @@ export function AnswerBody({
     <div className="markdown text-sm leading-relaxed">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={{
           p: ({ children }) => <p>{linkifyCitations(children)}</p>,
           li: ({ children }) => <li>{linkifyCitations(children)}</li>,
-          code({ className, children, ...props }) {
-            const match = /language-(\w+)/.exec(className ?? '');
-            const text = String(children).replace(/\n$/, '');
-            return match ? (
-              <SyntaxHighlighter language={match[1]} style={oneDark} PreTag="div">
-                {text}
-              </SyntaxHighlighter>
-            ) : (
-              <code className={className} {...props}>
-                {children}
-              </code>
-            );
-          },
+          a: ({ children, href }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand underline">
+              {children}
+            </a>
+          ),
         }}
       >
         {content || '…'}
@@ -76,6 +71,7 @@ export function AnswerBody({
           {sources.map((s) => (
             <button
               key={s.chunkId}
+              type="button"
               onClick={() => onCite(s)}
               className="rounded-full border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 hover:border-brand hover:text-brand dark:border-neutral-700 dark:text-neutral-300"
             >

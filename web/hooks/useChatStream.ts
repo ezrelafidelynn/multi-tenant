@@ -90,8 +90,7 @@ export function useChatStream() {
         let buffer = '';
         let newConversationId = conversationId;
 
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
+        for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
